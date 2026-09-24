@@ -1,0 +1,51 @@
+{{- $p := (index .Values.policies "require-run-as-non-root") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-run-as-non-root
+  annotations:
+    policies.kyverno.io/title: Require Run As Non Root
+    policies.kyverno.io/category: Pod Security - Identity
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Exige runAsNonRoot=true no securityContext do Pod (herdado pelos
+      containers) ou no de cada container, garantindo que nenhum processo do container seja
+      executado com privilégios de root, mesmo que a imagem não defina um usuário.
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: check-containers-non-root
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: >-
+          Defina 'securityContext.runAsNonRoot: true' no Pod ou em todos os containers
+          (e não sobrescreva com false em nenhum container).
+        anyPattern:
+          # Definido no Pod: os containers herdam, e nenhum pode sobrescrever com false.
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+              =(initContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): true
+              containers:
+                - =(securityContext):
+                    =(runAsNonRoot): true
+              =(ephemeralContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): true
+          # Não definido no Pod: todo container precisa declarar.
+          - spec:
+              =(initContainers):
+                - securityContext:
+                    runAsNonRoot: true
+              containers:
+                - securityContext:
+                    runAsNonRoot: true
+              =(ephemeralContainers):
+                - securityContext:
+                    runAsNonRoot: true
+{{- end }}

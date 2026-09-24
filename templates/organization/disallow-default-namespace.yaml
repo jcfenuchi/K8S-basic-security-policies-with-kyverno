@@ -1,0 +1,26 @@
+{{- $p := (index .Values.policies "disallow-default-namespace") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-default-namespace
+  annotations:
+    policies.kyverno.io/title: Disallow Default Namespace
+    policies.kyverno.io/category: Pod Security - Organization
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      O namespace 'default' não possui controles de acesso, quotas ou políticas
+      de rede por padrão. Workloads nele ficam expostos e sem governança.
+      Esta política bloqueia a criação de Pods diretamente no namespace 'default',
+      forçando o uso de namespaces dedicados com políticas aplicadas.
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: check-default-namespace
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod") "namespaces" (list "default")) | nindent 6 }}
+      validate:
+        message: "Não crie workloads no namespace 'default'. Use um namespace dedicado para o seu projeto."
+        deny: {}
+{{- end }}

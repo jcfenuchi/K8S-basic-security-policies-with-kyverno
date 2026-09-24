@@ -1,0 +1,37 @@
+{{- $p := (index .Values.policies "require-resource-requests") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-requests
+  annotations:
+    policies.kyverno.io/title: Require Resource Requests
+    policies.kyverno.io/category: Pod Security - Resources
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Sem requests definidos, o scheduler do Kubernetes não consegue alocar os
+      containers de forma adequada nos nós, podendo gerar sobrecarga e OOMKills.
+      Requests também são necessários para que o Vertical Pod Autoscaler e o
+      Cluster Autoscaler funcionem corretamente.
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: check-resource-requests
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: "Todos os containers devem declarar 'resources.requests' para CPU e memória."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+            =(initContainers):
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+{{- end }}

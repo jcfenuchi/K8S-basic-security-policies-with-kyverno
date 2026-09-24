@@ -1,0 +1,40 @@
+{{- $p := (index .Values.policies "default-deny-networkpolicy") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: default-deny-networkpolicy
+  annotations:
+    policies.kyverno.io/title: Add Default Deny NetworkPolicy
+    policies.kyverno.io/category: Pod Security - Network
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Namespace, NetworkPolicy
+    policies.kyverno.io/description: >-
+      Sem uma NetworkPolicy, todo pod de um namespace pode se comunicar
+      livremente com qualquer outro pod do cluster. Esta política gera
+      automaticamente uma NetworkPolicy "default-deny-all" em cada namespace
+      (novo ou já existente, via generateExisting), bloqueando entrada e saída
+      por padrão. Diferente das demais políticas deste chart, esta CRIA um
+      recurso de verdade assim que é ativada — não é apenas uma validação.
+      Workloads que precisam se comunicar exigem NetworkPolicies adicionais
+      liberando o tráfego necessário.
+spec:
+  background: true
+  rules:
+    - name: default-deny
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Namespace") "extraExclude" (list "kube-system" "kube-public" "kube-node-lease" "kyverno" $.Values.namespace.name)) | nindent 6 }}
+      generate:
+        # Sem isto a NetworkPolicy só é gerada em namespaces criados depois da política.
+        generateExisting: true
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: default-deny-all
+        namespace: "{{ `{{request.object.metadata.name}}` }}"
+        synchronize: true
+        data:
+          spec:
+            podSelector: {}
+            policyTypes:
+              - Ingress
+              - Egress
+{{- end }}

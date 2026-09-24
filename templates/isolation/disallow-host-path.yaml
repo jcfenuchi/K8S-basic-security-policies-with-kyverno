@@ -1,0 +1,29 @@
+{{- $p := (index .Values.policies "disallow-host-path") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-host-path
+  annotations:
+    policies.kyverno.io/title: Disallow HostPath Volumes
+    policies.kyverno.io/category: Pod Security - Isolation
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Volumes do tipo hostPath montam diretórios diretamente do sistema de arquivos
+      do nó (node) dentro do container. Isso permite que um container malicioso
+      leia ou modifique arquivos críticos do host, incluindo credenciais e configurações
+      do próprio Kubernetes. Esta política bloqueia o uso de qualquer hostPath.
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: check-hostpath
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: "Volumes do tipo hostPath não são permitidos. Use PersistentVolumeClaim ou emptyDir."
+        pattern:
+          spec:
+            =(volumes):
+              - X(hostPath): "null"
+{{- end }}

@@ -1,0 +1,47 @@
+{{- $p := (index .Values.policies "require-labels") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-labels
+  annotations:
+    policies.kyverno.io/title: Require Standard Labels
+    policies.kyverno.io/category: Pod Security - Organization
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/subject: Pod, Deployment, StatefulSet, DaemonSet
+    policies.kyverno.io/description: >-
+      Labels padronizados são essenciais para observabilidade, faturamento por equipe,
+      troubleshooting e aplicação de políticas de rede baseadas em seletores. Esta
+      política exige os labels definidos em "policies.require-labels.requiredLabels"
+      (values.yaml) em todo Pod, Deployment, StatefulSet e DaemonSet.
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: check-pod-labels
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: >-
+          Os labels obrigatórios não foram encontrados. Adicione em metadata.labels: {{ join ", " $p.requiredLabels }}.
+        pattern:
+          metadata:
+            labels:
+              {{- range $p.requiredLabels }}
+              {{ . }}: "?*"
+              {{- end }}
+
+    - name: check-deployment-labels
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Deployment" "StatefulSet" "DaemonSet")) | nindent 6 }}
+      validate:
+        message: >-
+          Os labels obrigatórios não foram encontrados no template do Pod.
+          Adicione em spec.template.metadata.labels: {{ join ", " $p.requiredLabels }}.
+        pattern:
+          spec:
+            template:
+              metadata:
+                labels:
+                  {{- range $p.requiredLabels }}
+                  {{ . }}: "?*"
+                  {{- end }}
+{{- end }}

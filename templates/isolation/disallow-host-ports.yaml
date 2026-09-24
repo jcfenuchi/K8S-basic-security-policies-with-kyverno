@@ -1,0 +1,36 @@
+{{- $p := (index .Values.policies "disallow-host-ports") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-host-ports
+  annotations:
+    policies.kyverno.io/title: Disallow Host Ports
+    policies.kyverno.io/category: Pod Security - Isolation
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      O uso de hostPort vincula uma porta diretamente no nó do cluster, tornando
+      o container acessível via IP do host sem passar pelo Service do Kubernetes.
+      Isso bypassa políticas de rede (NetworkPolicy) e expõe serviços diretamente
+      na rede do host. Use Services do tipo ClusterIP, NodePort ou LoadBalancer.
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: check-host-ports
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: "O uso de hostPort não é permitido. Exponha o serviço via Kubernetes Service."
+        pattern:
+          spec:
+            =(initContainers):
+              - =(ports):
+                  - =(hostPort): 0
+            containers:
+              - =(ports):
+                  - =(hostPort): 0
+            =(ephemeralContainers):
+              - =(ports):
+                  - =(hostPort): 0
+{{- end }}

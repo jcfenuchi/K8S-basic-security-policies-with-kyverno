@@ -1,0 +1,17 @@
+kyverno-guardrails-policies instalado.
+
+As ClusterPolicy do Kyverno são recursos de cluster inteiro — elas já estão
+valendo, independente do namespace do release. Para ver o que foi ativado:
+
+  kubectl get clusterpolicies
+
+Para acompanhar violações sem esperar alguém reclamar:
+
+  kubectl get policyreport -A
+  kubectl get clusterpolicyreport
+
+Se este é o primeiro install em um cluster com workloads já rodando, é
+esperado ver bastante coisa em "fail" no primeiro `policyreport` — isso é
+normal com o padrão "Audit" e ainda não bloqueia nada. Revise, ajuste os
+workloads (ou os values.yaml, se a política for legitimamente inaplicável ao
+seu caso) e só depois mude para "Enforce".

@@ -1,0 +1,21 @@
+apiVersion: v2
+name: kyverno-guardrails-policies
+description: >-
+  Conjunto de ClusterPolicy do Kyverno com os controles mínimos de segurança e
+  boas práticas que qualquer cluster Kubernetes de produção deveria ter:
+  isolamento de containers, imagens confiáveis, limites de recursos e rede
+  padrão-negada.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - kyverno
+  - kubernetes
+  - security
+  - policy-as-code
+  - pod-security-standards
+home: https://kyverno.io
+sources:
+  - https://kyverno.io/policies
+maintainers:
+  - name: Plataforma

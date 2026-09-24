@@ -1,0 +1,38 @@
+{{- $p := (index .Values.policies "require-seccomp-profile") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-seccomp-profile
+  annotations:
+    policies.kyverno.io/title: Require Seccomp Profile
+    policies.kyverno.io/category: Pod Security - Identity
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Seccomp restringe quais syscalls um container pode chamar no kernel do
+      host, reduzindo a superfície de ataque em caso de comprometimento. Esta
+      política exige um seccompProfile do tipo RuntimeDefault ou Localhost,
+      declarado no Pod ou em cada container — é um dos controles do Pod
+      Security Standard "Restricted".
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: check-seccomp-profile
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: >-
+          Defina 'securityContext.seccompProfile.type: RuntimeDefault' (ou 'Localhost')
+          no Pod ou em cada container.
+        anyPattern:
+          - spec:
+              securityContext:
+                seccompProfile:
+                  type: "RuntimeDefault | Localhost"
+          - spec:
+              containers:
+                - securityContext:
+                    seccompProfile:
+                      type: "RuntimeDefault | Localhost"
+{{- end }}

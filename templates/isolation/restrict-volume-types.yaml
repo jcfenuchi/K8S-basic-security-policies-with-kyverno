@@ -1,0 +1,35 @@
+{{- $p := (index .Values.policies "restrict-volume-types") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-volume-types
+  annotations:
+    policies.kyverno.io/title: Restrict Volume Types
+    policies.kyverno.io/category: Pod Security - Isolation
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      hostPath já tem política própria, mas outros tipos de volume também dão
+      acesso direto a recursos do host ou da infraestrutura (nfs, iscsi, fc,
+      gitRepo, etc). Esta política permite apenas os tipos de volume considerados
+      seguros pelo Pod Security Standard "Restricted": configMap, csi,
+      downwardAPI, emptyDir, ephemeral, persistentVolumeClaim, projected e secret.
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: check-volume-types
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: >-
+          Este Pod usa um tipo de volume não permitido. Tipos aceitos: configMap,
+          csi, downwardAPI, emptyDir, ephemeral, persistentVolumeClaim, projected, secret.
+        deny:
+          conditions:
+            all:
+              # '' cobre o Pod sem volumes (a expressão cai no default '').
+              - key: "{{ `{{ request.object.spec.volumes[].keys(@)[] || '' }}` }}"
+                operator: AnyNotIn
+                value: ['', name, configMap, csi, downwardAPI, emptyDir, ephemeral, persistentVolumeClaim, projected, secret]
+{{- end }}

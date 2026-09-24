@@ -1,0 +1,50 @@
+{{- $p := (index .Values.policies "disallow-capabilities") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-capabilities
+  annotations:
+    policies.kyverno.io/title: Disallow Dangerous Linux Capabilities
+    policies.kyverno.io/category: Pod Security - Identity
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Linux capabilities concedem ao container poderes adicionais no kernel do host.
+      Capabilities como NET_ADMIN, SYS_ADMIN, NET_RAW e SYS_PTRACE são frequentemente
+      usadas em ataques de escape de container. Esta política bloqueia as mais perigosas
+      e exige que a lista de capabilities seja explicitamente reduzida com drop: [ALL].
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    # Bloqueia adição de capabilities perigosas
+    - name: block-dangerous-capabilities
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: >-
+          As capabilities NET_ADMIN, SYS_ADMIN, NET_RAW, SYS_PTRACE, SYS_MODULE,
+          DAC_OVERRIDE e SETUID não são permitidas.
+        deny:
+          conditions:
+            any:
+              - key: "{{ `{{ request.object.spec.[ephemeralContainers, initContainers, containers][].securityContext.capabilities.add[] }}` }}"
+                operator: AnyIn
+                value: [NET_ADMIN, SYS_ADMIN, NET_RAW, SYS_PTRACE, SYS_MODULE, DAC_OVERRIDE, SETUID]
+
+    # Exige drop: [ALL] em todos os containers
+    - name: require-drop-all
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: "Todos os containers devem declarar 'securityContext.capabilities.drop: [ALL]'."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  capabilities:
+                    drop: ["ALL"]
+            =(initContainers):
+              - securityContext:
+                  capabilities:
+                    drop: ["ALL"]
+{{- end }}

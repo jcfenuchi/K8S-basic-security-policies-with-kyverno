@@ -1,0 +1,48 @@
+{{- $p := (index .Values.policies "disallow-latest-tag") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Tag
+    policies.kyverno.io/category: Pod Security - Images
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      A tag ':latest' não é determinística — a imagem referenciada pode mudar
+      a cada pull, tornando deploys imprevisíveis e impossibilitando rollbacks
+      confiáveis. Esta política bloqueia Pods que usem ':latest' ou que não
+      especifiquem tag nenhuma (o que implica latest por padrão).
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    # Duas regras separadas: um único pattern com âncora condicional "(image)"
+    # deixava passar a tag ':latest' explícita.
+    - name: require-image-tag
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: "Toda imagem precisa de uma tag explícita, como ':1.25.3', ou de um digest SHA256."
+        pattern:
+          spec:
+            =(initContainers):
+              - image: "*:*"
+            containers:
+              - image: "*:*"
+            =(ephemeralContainers):
+              - image: "*:*"
+
+    - name: disallow-latest
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: "A tag ':latest' não é permitida. Especifique uma tag imutável, como ':1.25.3' ou um digest SHA256."
+        pattern:
+          spec:
+            =(initContainers):
+              - image: "!*:latest"
+            containers:
+              - image: "!*:latest"
+            =(ephemeralContainers):
+              - image: "!*:latest"
+{{- end }}

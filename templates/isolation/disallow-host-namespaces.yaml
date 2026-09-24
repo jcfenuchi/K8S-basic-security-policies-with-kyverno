@@ -1,0 +1,30 @@
+{{- $p := (index .Values.policies "disallow-host-namespaces") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-host-namespaces
+  annotations:
+    policies.kyverno.io/title: Disallow Host Namespaces
+    policies.kyverno.io/category: Pod Security - Isolation
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      O compartilhamento dos namespaces do host (hostNetwork, hostPID, hostIPC)
+      quebra o isolamento do container e pode expor a rede do host, processos e
+      mecanismos de comunicação interprocesso para dentro do container.
+      Esta política bloqueia qualquer Pod que ative essas opções.
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: check-host-namespaces
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: "O uso de hostNetwork, hostPID e hostIPC não é permitido."
+        pattern:
+          spec:
+            =(hostNetwork): "false"
+            =(hostPID): "false"
+            =(hostIPC): "false"
+{{- end }}

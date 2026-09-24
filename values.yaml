@@ -1,0 +1,161 @@
+# ==============================================================================
+# kyverno-guardrails-policies - values.yaml
+# ==============================================================================
+# Cada política abaixo é independente: "enabled: false" simplesmente não
+# renderiza aquele ClusterPolicy. Para ativar uma política nova, basta colocar
+# o nome dela aqui com "enabled: true" (o nome é sempre o mesmo do arquivo em
+# templates/ e do "metadata.name" gerado).
+# ==============================================================================
+
+namespace:
+  # Onde o release do Helm fica registrado. As ClusterPolicy do Kyverno são
+  # recursos de escopo de CLUSTER (não de namespace) e continuam valendo para
+  # o cluster inteiro independente disso — este namespace é só o "endereço"
+  # organizacional do release, não uma limitação de onde as políticas atuam.
+  create: true
+  name: kyverno-guardrails-policies
+
+# Ação usada por qualquer política que não sobrescreva o próprio valor abaixo.
+#   Audit   -> registra a violação em PolicyReport, não bloqueia nada.
+#   Enforce -> bloqueia a criação/atualização do recurso que viola a política.
+# Comece em Audit, revise "kubectl get policyreport -A" por alguns dias e só
+# então mude para Enforce (globalmente ou política por política).
+validationFailureAction: Audit
+
+# Em quais namespaces as políticas valem. Vale para todas as políticas; cada
+# política pode definir o próprio "excludeNamespaces" e/ou "namespaceSelector"
+# em "policies.<nome>", e aí o valor dela substitui o daqui (um "[]" ou "{}"
+# na política desliga o escopo global só para ela).
+scope:
+  # Namespaces onde nenhuma política se aplica. Exemplo:
+  #   excludeNamespaces: [legado, monitoring]
+  excludeNamespaces: []
+
+  # Se preenchido, as políticas só valem nos namespaces com estes labels.
+  # Vazio = todos os namespaces. Exemplo:
+  #   namespaceSelector:
+  #     matchLabels:
+  #       environment: production
+  namespaceSelector: {}
+
+policies:
+  # ---------------------------------------------------------------------------
+  # Identity — quem o container diz que é e o que ele pode fazer no kernel
+  # ---------------------------------------------------------------------------
+  # Bloqueia containers com securityContext.privileged=true.
+  disallow-privileged-containers:
+    enabled: true
+
+  # Bloqueia execução explícita como root (runAsUser=0).
+  disallow-root-user:
+    enabled: true
+
+  # Exige runAsNonRoot=true no Pod ou em todos os containers.
+  require-run-as-non-root:
+    enabled: true
+
+  # Bloqueia escalada de privilégio (allowPrivilegeEscalation).
+  disallow-privilege-escalation:
+    enabled: true
+
+  # Bloqueia capabilities perigosas e exige drop: ALL.
+  disallow-capabilities:
+    enabled: true
+
+  # Exige seccompProfile do tipo RuntimeDefault ou Localhost.
+  require-seccomp-profile:
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Access — o que o Pod herda por padrão da API do cluster
+  # ---------------------------------------------------------------------------
+  # Impede o Pod de herdar o token do ServiceAccount por padrão.
+  disallow-automount-service-account-token:
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Isolation — fronteira entre o container e o nó/cluster
+  # ---------------------------------------------------------------------------
+  # Bloqueia hostNetwork, hostPID e hostIPC.
+  disallow-host-namespaces:
+    enabled: true
+
+  # Bloqueia volumes do tipo hostPath.
+  disallow-host-path:
+    enabled: true
+
+  # Bloqueia uso de hostPort.
+  disallow-host-ports:
+    enabled: true
+
+  # Permite só tipos de volume seguros (sem nfs, iscsi, gitRepo, etc).
+  restrict-volume-types:
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Network — comunicação entre pods
+  # ---------------------------------------------------------------------------
+  # Gera uma NetworkPolicy default-deny em cada namespace.
+  default-deny-networkpolicy:
+    # Desligada por padrão de propósito: diferente das outras, esta política
+    # GERA uma NetworkPolicy em cada namespace assim que é ativada — isso
+    # acontece na hora, independente de Audit/Enforce (gerar recurso não é uma
+    # validação). Se o namespace ainda não tiver NetworkPolicies liberando o
+    # tráfego necessário, workloads existentes podem parar de se comunicar.
+    # Ligue só depois de mapear o tráfego real do cluster.
+    enabled: false
+
+  # ---------------------------------------------------------------------------
+  # Images — proveniência e imutabilidade
+  # ---------------------------------------------------------------------------
+  # Proíbe a tag ':latest' (ou imagem sem tag nenhuma).
+  disallow-latest-tag:
+    enabled: true
+
+  # Permite apenas imagens de registries aprovados.
+  restrict-image-registries:
+    enabled: true
+    # Ajuste para os registries realmente usados no seu ambiente.
+    # A comparação é feita com o texto do campo "image", sem normalizar: uma
+    # imagem escrita como "nginx:1.27" não casa com "docker.io/library/*".
+    allowedRegistries:
+      - "registry.empresa.com/*"
+      - "ghcr.io/*"
+      - "quay.io/*"
+      - "registry.k8s.io/*"
+      - "docker.io/library/*"
+
+  # ---------------------------------------------------------------------------
+  # Resources — comportamento sob pressão de CPU/memória
+  # ---------------------------------------------------------------------------
+  # Exige requests de CPU e memória em todo container.
+  require-resource-requests:
+    enabled: true
+
+  # Exige limits de CPU e memória em todo container.
+  require-resource-limits:
+    enabled: true
+
+  # Exige filesystem raiz somente leitura.
+  require-read-only-root-filesystem:
+    enabled: true
+
+  # Exige livenessProbe e readinessProbe (Deployment/StatefulSet/DaemonSet).
+  require-probes:
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # Organization — governança básica
+  # ---------------------------------------------------------------------------
+  # Bloqueia workloads criados no namespace 'default'.
+  disallow-default-namespace:
+    enabled: true
+
+  # Exige labels padronizados (app, environment, owner).
+  require-labels:
+    enabled: true
+    # Ajuste para o padrão de labels da sua organização.
+    requiredLabels:
+      - app
+      - environment
+      - owner

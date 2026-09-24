@@ -1,0 +1,40 @@
+{{- $p := (index .Values.policies "require-probes") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-probes
+  annotations:
+    policies.kyverno.io/title: Require Liveness and Readiness Probes
+    policies.kyverno.io/category: Pod Security - Resources
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Deployment, StatefulSet, DaemonSet
+    policies.kyverno.io/description: >-
+      Sem probes, o Kubernetes não sabe distinguir um container travado de um
+      saudável: um Pod pode continuar recebendo tráfego mesmo travado, ou nunca
+      ser reiniciado automaticamente. Esta política exige livenessProbe e
+      readinessProbe em todo container de Deployment, StatefulSet e DaemonSet.
+      Pods avulsos e Jobs/CronJobs ficam de fora de propósito, já que workloads
+      batch geralmente não fazem sentido com health checks contínuos.
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: check-probes
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Deployment" "StatefulSet" "DaemonSet")) | nindent 6 }}
+      validate:
+        message: "Todo container deve declarar 'livenessProbe' e 'readinessProbe'."
+        # Confere pelas chaves do container: o pattern "?*" só casa com texto
+        # e reprovava probes declaradas, que são objetos.
+        foreach:
+          - list: "request.object.spec.template.spec.containers"
+            deny:
+              conditions:
+                any:
+                  - key: livenessProbe
+                    operator: AnyNotIn
+                    value: "{{ `{{ element.keys(@) }}` }}"
+                  - key: readinessProbe
+                    operator: AnyNotIn
+                    value: "{{ `{{ element.keys(@) }}` }}"
+{{- end }}

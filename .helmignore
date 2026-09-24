@@ -1,0 +1,8 @@
+# Padrão do Helm — arquivos que não devem ir para o pacote do chart.
+.git/
+.gitignore
+*.swp
+*.bak
+*.tmp
+*.orig
+.DS_Store

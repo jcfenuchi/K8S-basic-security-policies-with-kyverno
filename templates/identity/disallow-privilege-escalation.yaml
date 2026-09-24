@@ -1,0 +1,37 @@
+{{- $p := (index .Values.policies "disallow-privilege-escalation") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privilege-escalation
+  annotations:
+    policies.kyverno.io/title: Disallow Privilege Escalation
+    policies.kyverno.io/category: Pod Security - Identity
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Mesmo um container rodando como non-root pode escalar privilégios em
+      tempo de execução através de binários com bit setuid/setgid, a menos que
+      allowPrivilegeEscalation esteja explicitamente desativado. Esta política
+      exige 'securityContext.allowPrivilegeEscalation: false' em todos os
+      containers — é um dos controles do Pod Security Standard "Restricted".
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: check-privilege-escalation
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: "Defina 'securityContext.allowPrivilegeEscalation: false' em todos os containers."
+        pattern:
+          spec:
+            =(initContainers):
+              - securityContext:
+                  allowPrivilegeEscalation: false
+            containers:
+              - securityContext:
+                  allowPrivilegeEscalation: false
+            =(ephemeralContainers):
+              - securityContext:
+                  allowPrivilegeEscalation: false
+{{- end }}

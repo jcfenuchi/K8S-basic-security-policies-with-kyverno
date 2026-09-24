@@ -1,0 +1,38 @@
+{{- $p := (index .Values.policies "restrict-image-registries") | default dict }}
+{{- if $p.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict Image Registries
+    policies.kyverno.io/category: Pod Security - Images
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Permite apenas imagens originadas de registries confiáveis e aprovados
+      pela equipe de plataforma. Imagens de registries públicos não auditados
+      podem conter malware, backdoors ou vulnerabilidades conhecidas. Ajuste
+      "policies.restrict-image-registries.allowedRegistries" em values.yaml
+      conforme os registries aprovados no seu ambiente.
+spec:
+  validationFailureAction: {{ $p.validationFailureAction | default $.Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: check-image-registry
+      {{- include "kyverno-guardrails-policies.matchExclude" (dict "p" $p "root" $ "kinds" (list "Pod")) | nindent 6 }}
+      validate:
+        message: >-
+          Somente imagens dos registries aprovados são permitidas.
+          Registries permitidos: {{ join ", " $p.allowedRegistries }}.
+        deny:
+          conditions:
+            all:
+              # Bloqueia se alguma imagem NÃO começar com um dos registries aprovados
+              - key: "{{ `{{ request.object.spec.[ephemeralContainers, initContainers, containers][].image }}` }}"
+                operator: AnyNotIn
+                value:
+                  {{- range $p.allowedRegistries }}
+                  - {{ . | quote }}
+                  {{- end }}
+{{- end }}
